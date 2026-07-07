@@ -92,12 +92,20 @@
   .ec { background:#F2F4F6; border-radius:9px; padding:6px 11px; font-size:12.5px; cursor:pointer; color:var(--muted); font-weight:600; }
   .ec.on { background:var(--accent); color:#fff; }
   .capacity { margin-top:10px; }
-  .cap-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; font-size:12.5px; color:var(--sub); }
-  .cap-num { font-weight:700; color:var(--text); }
-  .cap-slots { color:var(--muted); }
-  .cap-warn { color:var(--amber); }
-  .cap-over { color:var(--red); font-weight:600; }
-  .cap-bar { margin-top:6px; height:6px; background:#E9EDF1; border-radius:999px; overflow:hidden; max-width:520px; }
+  .cap-main { font-size:14px; color:var(--sub); letter-spacing:-.2px; }
+  .cap-main b { color:var(--text); font-weight:700; font-size:15px; }
+  .cap-miss { color:var(--amber); font-weight:600; font-size:12.5px; }
+  .cap-status { margin-top:7px; font-size:13.5px; font-weight:700; letter-spacing:-.2px; }
+  .cap-status.over { color:var(--red); }
+  .cap-status.ok { color:var(--green); }
+  .cap-sync { margin-top:7px; font-size:12.5px; display:flex; align-items:center; gap:8px; font-weight:600; }
+  .cap-sync.done { color:var(--green); }
+  .cap-sync.undone { color:var(--muted); }
+  .sync-btn { border:none; background:var(--accent); color:#fff; border-radius:8px; padding:5px 13px;
+              font-size:12.5px; font-weight:700; cursor:pointer; font-family:inherit; }
+  .sync-btn:hover { filter:brightness(.96); }
+  .sync-btn:disabled { opacity:.6; cursor:default; }
+  .cap-bar { margin-top:8px; height:8px; background:#E9EDF1; border-radius:999px; overflow:hidden; max-width:520px; }
   .cap-fill { height:100%; border-radius:999px; transition:width .2s; }
   .cap-meets { display:flex; gap:5px; flex-wrap:wrap; margin-top:7px; }
   .meet { font-size:11.5px; background:var(--indigo-soft); color:var(--indigo); border-radius:7px; padding:3px 8px; }
@@ -772,19 +780,34 @@ function updateCapacity(){
   const pct = avail>0 ? Math.min(100, Math.round(used/avail*100)) : 100;
   const over = used>avail;
   const color = over ? "var(--red)" : (used>=avail*0.8 ? "#E8A33D" : "var(--green)");
-  const slots = cfg.slots || "";
-  let html = `<div class="cap-row"><b>오늘 타임박스</b><span class="cap-num">${fmtDur(used)||"0m"} / ${fmtDur(avail)} 가용</span>`;
-  if (synced) html += `<span class="cap-slots">🗓 회의 ${fmtDur(busy)} 제외 (총 ${fmtDur(cap)})</span>`;
-  else html += `<span class="cap-warn">캘린더 미동기화 (총 ${fmtDur(cap)} 기준)</span>`;
-  if (slots) html += `<span class="cap-slots">🕙 ${slots}</span>`;
-  if (missing) html += `<span class="cap-warn">추정 없음 ${missing}건</span>`;
-  if (over) html += `<span class="cap-over">⚠ ${fmtDur(used-avail)} 초과 — 쪼개거나 미루기</span>`;
-  html += `</div><div class="cap-bar"><div class="cap-fill" style="width:${pct}%;background:${color}"></div></div>`;
+
+  // 현황
+  let html = `<div class="cap-main">오늘 타임박스 <b>${fmtDur(used)||"0m"}</b> / ${fmtDur(avail)} 가용${missing?` <span class="cap-miss">· 추정 없음 ${missing}건</span>`:""}</div>`;
+  html += `<div class="cap-bar"><div class="cap-fill" style="width:${pct}%;background:${color}"></div></div>`;
+  // 상태
+  if (over) html += `<div class="cap-status over">총 ${fmtDur(used-avail)} 초과되었어요 — 쪼개거나 미루기</div>`;
+  else html += `<div class="cap-status ok">총 ${fmtDur(avail-used)} 아직 여유 있어요</div>`;
+  // 캘린더 동기화 상태
+  if (synced) {
+    html += `<div class="cap-sync done">🗓 캘린더 동기화 완료</div>`;
+  } else {
+    html += `<div class="cap-sync undone">🗓 캘린더 미동기화 <button class="sync-btn" id="syncBtn" onclick="requestSync()">반영하기</button></div>`;
+  }
   if (synced && cal.events && cal.events.length) {
     const evs = cal.events.slice().sort((a,b)=>(a.start||"")<(b.start||"")?-1:1);
     html += `<div class="cap-meets">` + evs.map(e=>`<span class="meet">🗓 ${esc(e.start||"")}${e.end?"–"+esc(e.end):""} ${esc(e.title)}</span>`).join("") + `</div>`;
   }
   $("capacity").innerHTML = html;
+}
+
+async function requestSync(){
+  const btn = $("syncBtn");
+  if (btn) { btn.disabled = true; btn.textContent = "불러오는 중…"; }
+  await load();   // GitHub 최신본 재조회 — 클로드가 방금 '반영'했으면 즉시 반영됨
+  const cal = state.config && state.config.calendar;
+  if (!(cal && cal.date === todayStr())) {
+    alert("아직 오늘 캘린더가 반영되지 않았어요.\n클로드에게 \"반영\"이라고 요청하면 오늘 일정을 불러옵니다.");
+  }
 }
 
 $("overlay").addEventListener("click", e => { if (e.target === $("overlay")) closeEdit(); });
