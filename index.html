@@ -354,11 +354,13 @@ setInterval(checkRemote, 20000);
 document.addEventListener("visibilitychange", () => { if (!document.hidden) checkRemote(); });
 
 /* ---------- GitHub 설정 화면 ---------- */
+// 새 기기 첫 설정 편의: 토큰 외 항목은 기본값으로 미리 채움
+const GH_DEFAULTS = { owner:"kim-darae", repo:"task-manager-data", branch:"main", path:"data.json" };
 function showSetup() {
-  $("s_owner").value  = (GH && GH.owner)  || "";
-  $("s_repo").value   = (GH && GH.repo)   || "";
-  $("s_branch").value = (GH && GH.branch) || "main";
-  $("s_path").value   = (GH && GH.path)   || "data.json";
+  $("s_owner").value  = (GH && GH.owner)  || GH_DEFAULTS.owner;
+  $("s_repo").value   = (GH && GH.repo)   || GH_DEFAULTS.repo;
+  $("s_branch").value = (GH && GH.branch) || GH_DEFAULTS.branch;
+  $("s_path").value   = (GH && GH.path)   || GH_DEFAULTS.path;
   $("s_token").value  = (GH && GH.token)  || "";
   $("setup").classList.add("show");
 }
