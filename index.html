@@ -639,7 +639,9 @@ function finishDrag(list, y) {
     if (fromRail) task.eta = "";
     if (task.status === "done" && !task.done_date) task.done_date = todayStr();
     if (task.status !== "done") task.done_date = "";
-  }                                    // 오늘 레일: 상태 그대로 순서(우선순위)만
+  } else if (list.dataset.rail) {      // 다른 열 → "오늘 완수": 오늘 날짜 자동 스탬프
+    if (!fromRail) task.eta = todayStr();   // 레일 내 순서변경(fromRail)이면 날짜 유지
+  }
   state.tasks = state.tasks.filter(t => t.id !== task.id);
   if (after) {
     const i = state.tasks.findIndex(t => t.id === after.dataset.id);
@@ -695,6 +697,11 @@ function saveEdit() {
     eta:$("f_eta").value, assignee:$("f_assignee").value.trim(), blocker:$("f_blocker").value.trim(), note:$("f_note").value.trim(), ticket:$("f_ticket").value.trim(), estimate:editEstimate, start:$("f_start").value
   };
   if (!data.title) { $("f_title").focus(); return; }
+  // "막고 있는 것" 입력 시 자동으로 선결조건 막힘 열로 (비우면 해야 함으로 복귀)
+  if (data.status !== "done") {
+    if (data.blocker) data.status = "blocked";
+    else if (data.status === "blocked") data.status = "todo";
+  }
   if (editingId) {
     const t = state.tasks.find(x=>x.id===editingId);
     Object.assign(t, data);
