@@ -539,8 +539,10 @@ function attachDrag(el, task) {
     if (drag || !e.isPrimary || (e.button && e.button !== 0)) return;
     if (e.target.closest(".star,.done-btn,a")) return;
     const touch = e.pointerType !== "mouse";
+    const srcList = el.closest(".list");
     drag = { task, el, pid:e.pointerId, sx:e.clientX, sy:e.clientY, ox:0, oy:0,
-             started:false, touch, hold:null, ghost:null };
+             started:false, touch, hold:null, ghost:null,
+             fromRail: !!(srcList && srcList.dataset.rail) };
     if (touch) drag.hold = setTimeout(() => {   // 터치: 길게 눌러 드래그 (짧은 탭·스크롤과 구분)
       if (drag && !drag.started) startDrag(e);
     }, 300);
@@ -624,6 +626,7 @@ function cleanupDrag() {
 
 function finishDrag(list, y) {
   const task = drag.task;
+  const fromRail = drag.fromRail;
   const after = list ? afterCard(list, y) : null;   // .dragging 제거 전에 계산
   suppressClick = true;
   setTimeout(() => suppressClick = false, 80);
@@ -632,6 +635,8 @@ function finishDrag(list, y) {
   if (!list) { render(); return; }
   if (list.dataset.status) {          // 상태 컬럼: 상태 변경 + 위치
     task.status = list.dataset.status;
+    // "오늘 완수" 레일 → 상태 컬럼으로 옮기면 ETA(오늘 날짜) 제거해 레일에서 빼냄
+    if (fromRail) task.eta = "";
     if (task.status === "done" && !task.done_date) task.done_date = todayStr();
     if (task.status !== "done") task.done_date = "";
   }                                    // 오늘 레일: 상태 그대로 순서(우선순위)만
