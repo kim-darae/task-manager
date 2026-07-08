@@ -793,10 +793,7 @@ function updateCapacity(){
   } else {
     html += `<div class="cap-sync undone">🗓 캘린더 미동기화 <button class="sync-btn" id="syncBtn" onclick="requestSync()">반영하기</button></div>`;
   }
-  if (synced && cal.events && cal.events.length) {
-    const evs = cal.events.slice().sort((a,b)=>(a.start||"")<(b.start||"")?-1:1);
-    html += `<div class="cap-meets">` + evs.map(e=>`<span class="meet">🗓 ${esc(e.start||"")}${e.end?"–"+esc(e.end):""} ${esc(e.title)}</span>`).join("") + `</div>`;
-  }
+  // 회의 목록은 "오늘 완수" 레일의 '오늘 회의' 블록에만 표시 (헤더 중복 제거)
   $("capacity").innerHTML = html;
 }
 
