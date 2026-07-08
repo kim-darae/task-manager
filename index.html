@@ -92,6 +92,9 @@
   .badge.slot { background:var(--violet-soft); color:var(--violet); }
   .badge.cal { background:var(--green-soft); color:var(--green); text-decoration:none; cursor:pointer; }
   .badge.cal:hover { text-decoration:underline; }
+  .star-toggle { background:#F2F4F6; border:none; border-radius:10px; padding:8px 14px; font-size:13px;
+                 font-weight:600; color:var(--muted); cursor:pointer; font-family:inherit; }
+  .star-toggle.on { background:var(--amber-soft); color:var(--amber); }
   .est-chips { display:flex; gap:6px; flex-wrap:wrap; }
   .ec { background:#F2F4F6; border-radius:9px; padding:6px 11px; font-size:12.5px; cursor:pointer; color:var(--muted); font-weight:600; }
   .ec.on { background:var(--accent); color:#fff; }
@@ -193,6 +196,9 @@
       <label>제목</label>
       <input id="f_title" placeholder="업무 내용" />
     </div>
+    <div class="field">
+      <button type="button" class="star-toggle" id="starToggle" onclick="toggleEditStar()">☆ 중요 표시</button>
+    </div>
     <div class="row2">
       <div class="field">
         <label>유형</label>
@@ -282,6 +288,7 @@ let starOnly = false;
 let doneCollapsed = true;
 let editingId = null;
 let editEstimate = 0;
+let editStar = false;
 let saveTimer = null;
 let sha = null;                              // data.json blob SHA (낙관적 잠금)
 
@@ -699,7 +706,9 @@ function openEdit(id, presetStatus) {
   editingId = id;
   const t = id ? state.tasks.find(x => x.id===id) : { title:"", bucket:state.buckets[0].id, status:presetStatus||"todo", eta:"", assignee:"", blocker:"", note:"", ticket:"", estimate:0, start:"" };
   editEstimate = t.estimate || 0;
+  editStar = !!t.star;
   renderEstChips();
+  renderStarToggle();
   $("modalTitle").textContent = id ? "업무 편집" : "새 업무";
   $("f_bucket").innerHTML = state.buckets.map(b=>`<option value="${b.id}">${b.emoji} ${b.name}</option>`).join("");
   $("f_status").innerHTML = state.statuses.map(s=>`<option value="${s.id}">${s.name}</option>`).join("");
@@ -714,7 +723,7 @@ function closeEdit() { $("overlay").classList.remove("show"); editingId=null; }
 function saveEdit() {
   const data = {
     title:$("f_title").value.trim(), bucket:$("f_bucket").value, status:$("f_status").value,
-    eta:$("f_eta").value, assignee:$("f_assignee").value.trim(), blocker:$("f_blocker").value.trim(), note:$("f_note").value.trim(), ticket:$("f_ticket").value.trim(), estimate:editEstimate, start:$("f_start").value
+    eta:$("f_eta").value, assignee:$("f_assignee").value.trim(), blocker:$("f_blocker").value.trim(), note:$("f_note").value.trim(), ticket:$("f_ticket").value.trim(), estimate:editEstimate, start:$("f_start").value, star:editStar
   };
   if (!data.title) { $("f_title").focus(); return; }
   // "막고 있는 것" 입력 시 자동으로 선결조건 막힘 열로 (비우면 해야 함으로 복귀)
@@ -776,6 +785,13 @@ function renderEstChips(){
     b.onclick=()=>{ editEstimate=v; renderEstChips(); };
     c.appendChild(b);
   });
+}
+
+function toggleEditStar(){ editStar = !editStar; renderStarToggle(); }
+function renderStarToggle(){
+  const b=$("starToggle");
+  b.classList.toggle("on", editStar);
+  b.textContent=(editStar?"★":"☆")+" 중요 표시";
 }
 
 function updateCapacity(){
