@@ -46,6 +46,7 @@
   .meetcard { display:flex; gap:8px; align-items:baseline; background:#fff; border-radius:10px; padding:7px 10px; }
   .meetcard .m-time { font-size:11.5px; font-weight:700; color:var(--indigo); flex:0 0 auto; }
   .meetcard .m-title { font-size:12px; color:var(--sub); word-break:keep-all; }
+  .meetcard .m-room { display:block; font-size:11px; color:var(--muted); font-weight:600; margin-top:2px; }
   .col-head { display:flex; align-items:center; gap:8px; padding:4px 6px 10px; font-weight:700; font-size:13.5px; letter-spacing:-.2px; }
   .col-head .count { color:var(--muted); font-weight:600; }
   .col-head .dot { width:8px; height:8px; border-radius:50%; }
@@ -466,7 +467,7 @@ function renderEtaRail(board, tasks) {
     const ml = document.createElement("div"); ml.className = "list meet-list";
     cal.events.slice().sort((a,b)=>(a.start||"")<(b.start||"")?-1:1).forEach(e=>{
       const m = document.createElement("div"); m.className = "meetcard";
-      m.innerHTML = `<div class="m-time">${esc(e.start||"")}${e.end?"–"+esc(e.end):""}</div><div class="m-title">${esc(e.title||"")}</div>`;
+      m.innerHTML = `<div class="m-time">${esc(e.start||"")}${e.end?"–"+esc(e.end):""}</div><div class="m-title">${esc(e.title||"")}${e.room?`<span class="m-room">📍 ${esc(e.room)}</span>`:""}</div>`;
       ml.appendChild(m);
     });
     col.appendChild(ml);
