@@ -92,6 +92,15 @@
   .badge.slot { background:var(--violet-soft); color:var(--violet); }
   .badge.cal { background:var(--green-soft); color:var(--green); text-decoration:none; cursor:pointer; }
   .badge.cal:hover { text-decoration:underline; }
+  .q-hint { font-size:12px; color:var(--muted); margin-bottom:8px; line-height:1.5; }
+  .q-hint b { color:var(--sub); font-weight:600; }
+  #q_text { width:100%; min-height:110px; border:1px solid var(--line); border-radius:12px; padding:11px 12px;
+            font-size:15px; font-family:inherit; line-height:1.6; resize:vertical; color:var(--text); }
+  #q_text:focus { outline:none; border-color:var(--accent); }
+  .q-preview { margin-top:12px; display:flex; flex-direction:column; gap:6px; }
+  .q-row { display:flex; align-items:center; gap:7px; flex-wrap:wrap; background:#F7F8FA; border-radius:10px; padding:8px 10px; }
+  .q-row .q-title { font-size:13px; font-weight:600; color:var(--text); flex:1; min-width:120px; word-break:keep-all; }
+  .q-empty { color:var(--muted); font-size:12px; padding:4px 2px; }
   .star-toggle { background:#F2F4F6; border:none; border-radius:10px; padding:8px 14px; font-size:13px;
                  font-weight:600; color:var(--muted); cursor:pointer; font-family:inherit; }
   .star-toggle.on { background:var(--amber-soft); color:var(--amber); }
@@ -156,7 +165,7 @@
     .filters { flex-wrap:nowrap; overflow-x:auto; -webkit-overflow-scrolling:touch; padding-bottom:2px; }
     .filters::-webkit-scrollbar { display:none; }
     .chip { flex:0 0 auto; }
-    #newBtn { display:none; }
+    #newBtn, #quickBtn { display:none; }
     .fab { display:flex; }
     .cap-bar { max-width:none; }
     .field input, .field textarea, .field select { font-size:16px; }  /* iOS 자동확대 방지 */
@@ -176,7 +185,8 @@
 <header>
   <div class="topline">
     <h1>🗂 다래님 업무 보드</h1>
-    <button class="btn primary" id="newBtn" onclick="openEdit(null)">+ 새 업무</button>
+    <button class="btn primary" id="quickBtn" onclick="openQuick()">⚡ 빠른추가</button>
+    <button class="btn" id="newBtn" onclick="openEdit(null)">+ 상세폼</button>
     <button class="btn" id="starFilterBtn" onclick="toggleStarOnly()">☆ 중요만</button>
     <button class="btn" id="refreshBtn" onclick="manualRefresh()" title="새로고침">↻</button>
     <button class="btn" id="setupBtn" onclick="showSetup()" title="GitHub 연동 설정">⚙</button>
@@ -187,7 +197,7 @@
 </header>
 
 <div class="board" id="board"></div>
-<button class="fab" aria-label="새 업무" onclick="openEdit(null)">＋</button>
+<button class="fab" aria-label="빠른 추가" onclick="openQuick()">＋</button>
 
 <div class="overlay" id="overlay">
   <div class="modal">
@@ -277,6 +287,20 @@
       <div class="spacer"></div>
       <button class="btn" onclick="closeSetup()">취소</button>
       <button class="btn primary" onclick="saveSetup()">저장하고 연결</button>
+    </div>
+  </div>
+</div>
+
+<div class="overlay" id="quick">
+  <div class="modal">
+    <h2>⚡ 빠른 추가</h2>
+    <div class="q-hint">한 줄에 하나씩 · 예: <b>무키 PRD 작성 - 오늘 (1시간)</b> / <b>정빈님 권한 확인 - 목요일</b></div>
+    <textarea id="q_text" rows="5" placeholder="여기에 업무를 한 줄씩 입력하세요&#10;오늘·내일·모레·목요일·7/25 / (1시간)·30분 / ~님 을 자동 인식합니다" autocapitalize="off"></textarea>
+    <div class="q-preview" id="q_preview"></div>
+    <div class="modal-foot">
+      <div class="spacer"></div>
+      <button class="btn" onclick="closeQuick()">취소</button>
+      <button class="btn primary" id="q_add" onclick="commitQuick()">추가</button>
     </div>
   </div>
 </div>
@@ -701,6 +725,92 @@ function afterCard(list, y) {
   return cards.find(c => { const box = c.getBoundingClientRect(); return y < box.top + box.height/2; }) || null;
 }
 
+/* ---------- 빠른 추가 (자연어 파싱) ---------- */
+const WEEKDAY = { "일":0,"월":1,"화":2,"수":3,"목":4,"금":5,"토":6 };
+function guessBucket(t){
+  const has=(...ks)=>ks.some(k=>t.includes(k));
+  if(has("TMPA","tmpa","API","api","연동","조조","티몰","29CM","29cm","어크로스비","인증","셀링","사방넷","SRE")) return "api";
+  if(has("면접","이력서","채용","그리팅","평가자","HTB","JD","커피챗","인터뷰")) return "hire";
+  if(has("PRD","prd","스펙","기능","무키","대표이미지","셀프서비스","태깅","링펜스","리뷰")) return "product";
+  if(has("문서","보고","QBR","MBR","2pager","R&R","위키","정리")) return "doc";
+  if(has("평가","권한","계정","리소스","제세공과","법카","수습","WBS")) return "org";
+  return "ops";
+}
+function parseQuick(line){
+  const raw = line.trim();
+  if(!raw) return null;
+  const today = new Date(); today.setHours(0,0,0,0);
+  const iso = d => d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());
+  const addDays = n => { const d=new Date(today); d.setDate(d.getDate()+n); return d; };
+  let eta="", estimate=0, assignee="", m;
+
+  // 예상 소요시간
+  if(m = raw.match(/(\d+(?:\.\d+)?)\s*시간\s*(\d+)\s*분/)) estimate = Math.round(parseFloat(m[1])*60)+parseInt(m[2]);
+  else if(m = raw.match(/(\d+(?:\.\d+)?)\s*시간/)) estimate = Math.round(parseFloat(m[1])*60);
+  else if(m = raw.match(/(\d+)\s*분/)) estimate = parseInt(m[1]);
+  else if(m = raw.match(/(?:^|[\s(])(\d+(?:\.\d+)?)h\b/i)) estimate = Math.round(parseFloat(m[1])*60);
+  else if(m = raw.match(/(?:^|[\s(])(\d+)m\b/i)) estimate = parseInt(m[1]);
+
+  // 마감일
+  if(/모레/.test(raw)) eta = iso(addDays(2));
+  else if(/오늘/.test(raw)) eta = iso(today);
+  else if(/내일/.test(raw)) eta = iso(addDays(1));
+  else if(m = raw.match(/(\d{1,2})\s*[\/\.]\s*(\d{1,2})|(\d{1,2})월\s*(\d{1,2})일/)){
+    const mo=parseInt(m[1]||m[3]), da=parseInt(m[2]||m[4]);
+    if(mo>=1&&mo<=12&&da>=1&&da<=31) eta = iso(new Date(today.getFullYear(), mo-1, da));
+  }
+  else if(m = raw.match(/(다음주|이번주)?\s*([일월화수목금토])요일/)){
+    const target=WEEKDAY[m[2]]; let delta=(target-today.getDay()+7)%7;
+    if(m[1]==="다음주") delta+=7;
+    else if(!m[1] && delta===0) delta=7;      // 요일만 = 다가오는 그 요일
+    eta = iso(addDays(delta));
+  }
+  else if(/월말|이번\s*달|이번달/.test(raw)) eta = iso(new Date(today.getFullYear(), today.getMonth()+1, 0));
+
+  // 담당(~님)
+  const who = raw.match(/[가-힣]{1,5}님(?:\s*[·、,]\s*[가-힣]{1,5}님)*/);
+  if(who) assignee = who[0];
+
+  // 제목: ' - ' 앞부분, 없으면 전체에서 꼬리 괄호 정리
+  let title = raw;
+  const dash = raw.search(/\s[-–]\s/);
+  if(dash>=0) title = raw.slice(0, dash).trim();
+  title = title.replace(/\s*\([^)]*\)\s*$/,"").trim() || raw;
+  return { title, bucket:guessBucket(title), eta, estimate, assignee };
+}
+
+function openQuick(){ $("q_text").value=""; $("q_preview").innerHTML=""; $("quick").classList.add("show");
+  if (matchMedia("(min-width:721px)").matches) setTimeout(()=>$("q_text").focus(),50); }
+function closeQuick(){ $("quick").classList.remove("show"); }
+function quickParsedList(){
+  return $("q_text").value.split("\n").map(parseQuick).filter(p=>p && p.title);
+}
+function renderQuickPreview(){
+  const list = quickParsedList();
+  const p = $("q_preview");
+  if(!list.length){ p.innerHTML = `<div class="q-empty">입력하면 여기에 파싱 결과가 미리 보입니다</div>`; $("q_add").textContent="추가"; return; }
+  p.innerHTML = list.map(t=>{
+    const b = bucket(t.bucket);
+    let chips = `<span class="badge cat">${b.emoji} ${b.name}</span>`;
+    if(t.eta) chips += `<span class="badge eta">📅 ${t.eta}</span>`;
+    if(t.estimate) chips += `<span class="badge est">⏱ ${fmtDur(t.estimate)}</span>`;
+    if(t.assignee) chips += `<span class="badge who">👤 ${esc(t.assignee)}</span>`;
+    return `<div class="q-row"><span class="q-title">${esc(t.title)}</span>${chips}</div>`;
+  }).join("");
+  $("q_add").textContent = list.length+"개 추가";
+}
+function commitQuick(){
+  const list = quickParsedList();
+  if(!list.length){ closeQuick(); return; }
+  const base = Date.now();
+  list.forEach((t,i)=>{
+    state.tasks.push({ id:"t"+(base+i), title:t.title, bucket:t.bucket, status:"todo",
+      eta:t.eta||"", estimate:t.estimate||0, assignee:t.assignee||"", blocker:"", note:"",
+      done_date:"", ticket:"", start:"" });
+  });
+  closeQuick(); render(); scheduleSave();
+}
+
 /* ---------- 편집 모달 ---------- */
 function openEdit(id, presetStatus) {
   editingId = id;
@@ -837,7 +947,9 @@ async function requestSync(){
 
 $("overlay").addEventListener("click", e => { if (e.target === $("overlay")) closeEdit(); });
 $("setup").addEventListener("click", e => { if (e.target === $("setup")) closeSetup(); });
-document.addEventListener("keydown", e => { if (e.key==="Escape") { closeEdit(); closeSetup(); } });
+$("quick").addEventListener("click", e => { if (e.target === $("quick")) closeQuick(); });
+$("q_text").addEventListener("input", renderQuickPreview);
+document.addEventListener("keydown", e => { if (e.key==="Escape") { closeEdit(); closeSetup(); closeQuick(); } });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(()=>{});
 if (ghReady()) load(); else showSetup();
 </script>
