@@ -294,7 +294,7 @@
 <div class="overlay" id="quick">
   <div class="modal">
     <h2>⚡ 빠른 추가</h2>
-    <div class="q-hint">한 줄에 하나씩 · 예: <b>무키 PRD 작성 - 오늘 (1시간)</b> / <b>정빈님 권한 확인 - 목요일</b></div>
+    <div class="q-hint">한 줄에 하나씩 · 구분자 <b>-</b> 또는 <b>/</b> · 예: <b>무키 PRD 작성 - 오늘 (1시간)</b> · <b>정빈님 권한 확인 / 이번주</b></div>
     <textarea id="q_text" rows="5" placeholder="여기에 업무를 한 줄씩 입력하세요&#10;오늘·내일·모레·목요일·7/25 / (1시간)·30분 / ~님 을 자동 인식합니다" autocapitalize="off"></textarea>
     <div class="q-preview" id="q_preview"></div>
     <div class="modal-foot">
@@ -742,6 +742,7 @@ function parseQuick(line){
   const today = new Date(); today.setHours(0,0,0,0);
   const iso = d => d.getFullYear()+"-"+pad2(d.getMonth()+1)+"-"+pad2(d.getDate());
   const addDays = n => { const d=new Date(today); d.setDate(d.getDate()+n); return d; };
+  const dow = today.getDay();  // 0=일 … 6=토
   let eta="", estimate=0, assignee="", m;
 
   // 예상 소요시간
@@ -751,30 +752,44 @@ function parseQuick(line){
   else if(m = raw.match(/(?:^|[\s(])(\d+(?:\.\d+)?)h\b/i)) estimate = Math.round(parseFloat(m[1])*60);
   else if(m = raw.match(/(?:^|[\s(])(\d+)m\b/i)) estimate = parseInt(m[1]);
 
-  // 마감일
+  // 마감일 (순서 중요 — 요일 지정이 '이번주/다음주' 단독보다 우선)
   if(/모레/.test(raw)) eta = iso(addDays(2));
   else if(/오늘/.test(raw)) eta = iso(today);
   else if(/내일/.test(raw)) eta = iso(addDays(1));
-  else if(m = raw.match(/(\d{1,2})\s*[\/\.]\s*(\d{1,2})|(\d{1,2})월\s*(\d{1,2})일/)){
+  else if(m = raw.match(/(다음주|이번주)?\s*([일월화수목금토])요일/)){    // 목요일 / 이번주 금요일 / 다음주 화요일
+    const target=WEEKDAY[m[2]];
+    const offMon = (target===0?6:target-1);   // 월요일 기준 오프셋(월0…일6)
+    const sinceMon = (dow+6)%7;               // 오늘이 이번 주 월요일로부터 며칠
+    if(m[1]==="이번주") eta = iso(addDays(offMon - sinceMon));
+    else if(m[1]==="다음주") eta = iso(addDays(offMon - sinceMon + 7));
+    else { let delta=(target-dow+7)%7; if(delta===0) delta=7; eta = iso(addDays(delta)); }  // 요일만 = 다가오는
+  }
+  else if(m = raw.match(/(\d{1,2})\s*[\/\.]\s*(\d{1,2})|(\d{1,2})월\s*(\d{1,2})일/)){   // 7/25 · 7.25 · 7월25일
     const mo=parseInt(m[1]||m[3]), da=parseInt(m[2]||m[4]);
     if(mo>=1&&mo<=12&&da>=1&&da<=31) eta = iso(new Date(today.getFullYear(), mo-1, da));
   }
-  else if(m = raw.match(/(다음주|이번주)?\s*([일월화수목금토])요일/)){
-    const target=WEEKDAY[m[2]]; let delta=(target-today.getDay()+7)%7;
-    if(m[1]==="다음주") delta+=7;
-    else if(!m[1] && delta===0) delta=7;      // 요일만 = 다가오는 그 요일
-    eta = iso(addDays(delta));
-  }
+  else if(/이번\s*주\s*말|이번주말|주말/.test(raw)){ eta = iso(addDays((0-dow+7)%7)); }       // 이번주말 → 이번 주 일요일
+  else if(/다음\s*주/.test(raw)){ let d=(1-dow+7)%7; eta = iso(addDays(d||7)); }               // 다음주 → 돌아오는 월요일
+  else if(/이번\s*주/.test(raw)){ eta = iso(addDays((5-dow+7)%7)); }                           // 이번주 → 이번 주 금요일
   else if(/월말|이번\s*달|이번달/.test(raw)) eta = iso(new Date(today.getFullYear(), today.getMonth()+1, 0));
 
   // 담당(~님)
   const who = raw.match(/[가-힣]{1,5}님(?:\s*[·、,]\s*[가-힣]{1,5}님)*/);
   if(who) assignee = who[0];
 
-  // 제목: ' - ' 앞부분, 없으면 전체에서 꼬리 괄호 정리
-  let title = raw;
-  const dash = raw.search(/\s[-–]\s/);
-  if(dash>=0) title = raw.slice(0, dash).trim();
+  // 제목: 구분자(앞뒤 공백 있는 - 또는 /) 앞부분. 구분자 없으면 날짜·시간 토큰을 제거
+  let title;
+  const sep = raw.match(/\s+[-–\/]\s+/);
+  if(sep){
+    title = raw.slice(0, sep.index).trim();
+  } else {
+    title = raw
+      .replace(/(다음주|이번주)?\s*[일월화수목금토]요일(까지)?/g," ")
+      .replace(/오늘|내일|모레|이번\s*주\s*말|이번주말|주말|다음\s*주|이번\s*주|이번\s*달|이번달|월말/g," ")
+      .replace(/\d{1,2}\s*[\/\.]\s*\d{1,2}|\d{1,2}월\s*\d{1,2}일/g," ")
+      .replace(/\d+(?:\.\d+)?\s*시간(\s*\d+\s*분)?|\d+\s*분|\d+(?:\.\d+)?h\b|\d+m\b/gi," ")
+      .replace(/까지/g," ").replace(/\([^)]*\)/g," ").replace(/\s{2,}/g," ").trim();
+  }
   title = title.replace(/\s*\([^)]*\)\s*$/,"").trim() || raw;
   return { title, bucket:guessBucket(title), eta, estimate, assignee };
 }
